@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const agentCardContent = document.getElementById('agent-card-content') as HTMLPreElement;
     const validationErrorsContainer = document.getElementById('validation-errors') as HTMLElement;
     const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+    const fileInput = document.getElementById('file-input') as HTMLInputElement;
     const sendBtn = document.getElementById('send-btn') as HTMLButtonElement;
     const chatMessages = document.getElementById('chat-messages') as HTMLElement;
     const debugConsole = document.getElementById('debug-console') as HTMLElement;
@@ -156,14 +157,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const sendMessage = () => {
-        const messageText = chatInput.value;
-        if (messageText.trim() && !chatInput.disabled) {
-            const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            appendMessage('user', messageText, messageId);
-            socket.emit('send_message', { message: messageText, id: messageId });
-            chatInput.value = '';
+    const sendMessage = async () => {
+        if (chatInput.disabled) {
+            return;
         }
+        const messageText = chatInput.value.trim();
+        const file = fileInput.files && fileInput.files[0];
+        const parts: any[] = [];
+        if (messageText) {
+            parts.push({ kind: 'text', text: messageText });
+        }
+        if (file) {
+            // Read file as base64
+            const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = reader.result as string;
+                    const idx = result.indexOf(',');
+                    resolve(idx >= 0 ? result.slice(idx + 1) : result);
+                };
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(file);
+            });
+            parts.push({
+                kind: 'file',
+                file: {
+                    name: file.name,
+                    mimeType: file.type || 'application/octet-stream',
+                    bytes: base64,
+                },
+            });
+        }
+        if (parts.length === 0) {
+            return;
+        }
+        const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        appendMessage('user', messageText || file.name, messageId);
+        socket.emit('send_message', { parts, id: messageId });
+        chatInput.value = '';
+        fileInput.value = '';
     };
 
     sendBtn.addEventListener('click', sendMessage);

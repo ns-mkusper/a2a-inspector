@@ -13,6 +13,7 @@ The application is built with a FastAPI backend and a TypeScript frontend.
 - **Token-Based Authentication:** Optionally provide a JWT to authenticate requests to the agent server.
 - **Live Chat:** A chat interface to send and receive messages with the connected agent.
 - **Debug Console:** A slide-out console shows the raw JSON-RPC 2.0 messages sent and received between the inspector and the agent server.
+- **File Upload:** Attach PDF documents to your messages; the inspector will base64‑encode and stream them alongside your chat as file parts.
 
 ## Prerequisites
 

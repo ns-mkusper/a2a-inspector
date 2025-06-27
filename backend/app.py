@@ -10,6 +10,8 @@ import validators
 from a2a.client import A2ACardResolver, A2AClient
 from a2a.types import (
     AgentCard,
+    FilePart,
+    FileWithBytes,
     JSONRPCErrorResponse,
     Message,
     MessageSendConfiguration,
@@ -235,7 +237,9 @@ async def handle_initialize_client(sid: str, data: dict[str, Any]) -> None:
         # First notify the client that initialization succeeded...
         await sio.emit('client_initialized', {'status': 'success'}, to=sid)
         # ...then emit an 'auth' debug event showing HTTP headers (including JWT if provided)
-        await _emit_debug_log(sid, 'initialize_client', 'auth', {'headers': headers})
+        await _emit_debug_log(
+            sid, 'initialize_client', 'auth', {'headers': headers}
+        )
     except Exception as e:
         logger.error(
             f'Failed to initialize client for {sid}: {e}', exc_info=True
@@ -248,8 +252,52 @@ async def handle_initialize_client(sid: str, data: dict[str, Any]) -> None:
 @sio.on('send_message')
 async def handle_send_message(sid: str, json_data: dict[str, Any]) -> None:
     """Handle the 'send_message' socket.io event."""
-    message_text = json_data.get('message')
+    # Build message parts: support text and file uploads
     message_id = json_data.get('id', str(uuid4()))
+    parts_data = json_data.get('parts')
+    parts: list[TextPart | FilePart] = []
+    if isinstance(parts_data, list):
+        for p in parts_data:
+            # Add a check to skip invalid items
+            if not isinstance(p, dict):
+                logger.warning(f'Skipping malformed message part: {p}')
+                continue  # Skip to the next item in the loop
+
+            kind = p.get('kind')
+            if kind == 'text':
+                parts.append(TextPart(text=p.get('text', '')))
+            elif kind == 'file':
+                f = p.get('file', {})
+                # Assuming your previous fix was to instantiate the Pydantic models directly
+                if f.get('bytes'):
+                    parts.append(
+                        FilePart(
+                            file=FileWithBytes(
+                                bytes=f.get('bytes'),
+                                mime_type=f.get('mimeType', 'application/pdf'),
+                                name=f.get('name'),
+                            )
+                        )
+                    )
+                elif f.get('uri'):
+                    parts.append(
+                        FilePart(
+                            file=FileWithUri(
+                                uri=f.get('uri'),
+                                mime_type=f.get('mimeType', ''),
+                            )
+                        )
+                    )
+                else:
+                    logger.warning(f'File part has no bytes or uri: {f}')
+            else:
+                logger.warning(
+                    f'Unknown message part kind: {kind} in part: {p}'
+                )
+
+    else:
+        text = json_data.get('message')
+        parts.append(TextPart(text=str(text)))
 
     if sid not in clients:
         await sio.emit(
@@ -260,10 +308,9 @@ async def handle_send_message(sid: str, json_data: dict[str, Any]) -> None:
         return
 
     _, a2a_client, card = clients[sid]
-
     message = Message(
         role=Role.user,
-        parts=[TextPart(text=str(message_text))],  # type: ignore[list-item]
+        parts=parts,
         messageId=str(uuid4()),
     )
     payload = MessageSendParams(
