@@ -16,7 +16,7 @@ interface AgentResponseEvent {
 }
 
 interface DebugLog {
-    type: 'request' | 'response' | 'error' | 'validation_error';
+    type: 'request' | 'response' | 'error' | 'validation_error' | 'auth';
     data: any;
     id: string;
 }
@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const connectBtn = document.getElementById('connect-btn') as HTMLButtonElement;
     const agentUrlInput = document.getElementById('agent-url') as HTMLInputElement;
+    const jwtInput = document.getElementById('agent-jwt') as HTMLInputElement;
     const collapsibleHeader = document.querySelector('.collapsible-header') as HTMLElement;
     const collapsibleContent = document.querySelector('.collapsible-content') as HTMLElement;
     const agentCardContent = document.getElementById('agent-card-content') as HTMLPreElement;
@@ -117,17 +118,23 @@ document.addEventListener('DOMContentLoaded', () => {
         sendBtn.disabled = true;
 
         try {
+            const jwt = jwtInput.value.trim();
             const response = await fetch('/agent-card', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: url, sid: socket.id })
+                body: JSON.stringify({ url: url, sid: socket.id, jwt })
             });
             const data = await response.json();
             if (!response.ok) { throw new Error(data.error || `HTTP error! status: ${response.status}`); }
 
             agentCardContent.textContent = JSON.stringify(data.card, null, 2);
             validationErrorsContainer.innerHTML = '<p class="placeholder-text">Initializing client session...</p>';
-            socket.emit('initialize_client', { url: url });
+            // Log the initialization payload (URL and JWT) to help debug missing token
+            console.log('initialize_client payload:', { url, jwt });
+            socket.emit('initialize_client', { url: url, jwt });
+            // Clear the debug console before showing new init logs
+            debugContent.innerHTML = '';
+            Object.keys(rawLogStore).forEach(key => delete rawLogStore[key]);
 
             if (data.validation_errors.length > 0) {
                 validationErrorsContainer.innerHTML = `<h3>Validation Errors</h3><ul>${data.validation_errors.map((e: string) => `<li>${e}</li>`).join('')}</ul>`;
@@ -143,9 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.status === 'success') {
             chatInput.disabled = false;
             sendBtn.disabled = false;
-            chatMessages.innerHTML = '<p class="placeholder-text">Ready to chat.</p>';
-            debugContent.innerHTML = '';
-            Object.keys(rawLogStore).forEach(key => delete rawLogStore[key]);
+        chatMessages.innerHTML = '<p class="placeholder-text">Ready to chat.</p>';
         } else {
             validationErrorsContainer.innerHTML = `<p style="color: red;">Error initializing client: ${data.message}</p>`;
         }

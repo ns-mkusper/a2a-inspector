@@ -9,6 +9,8 @@ The application is built with a FastAPI backend and a TypeScript frontend.
 - **Connect to a local A2A Agent:** Specify the base URL of any agent server to connect (e.g., `http://localhost:5555`).
 - **View Agent Card:** Automatically fetches and displays the agent's card.
 - **Spec Compliance Checks:** Performs basic validation on the agent card to ensure it adheres to the A2A specification.
+- **Spec Compliance Checks:** Performs basic validation on the agent card to ensure it adheres to the A2A specification.
+- **Token-Based Authentication:** Optionally provide a JWT to authenticate requests to the agent server.
 - **Live Chat:** A chat interface to send and receive messages with the connected agent.
 - **Debug Console:** A slide-out console shows the raw JSON-RPC 2.0 messages sent and received between the inspector and the agent server.
 
@@ -88,3 +90,13 @@ Once both processes are running, open your web browser and navigate to:
 **[http://127.0.0.1:5001](http://127.0.0.1:5001)**
 
 - Enter the URL of your A2A server agent that needs to be tested.
+
+## JWT Authentication
+
+If your A2A agent server requires JWT authentication, enter your token in the JWT field on the home page before clicking **Connect**. The provided JWT will be included as a Bearer token in the Authorization header for all agent requests and chat messages.
+
+After clicking **Connect**, open the Debug Console (using the “Debug Console” toggle) to inspect the `auth` debug log entry, which shows the HTTP headers (including your Bearer token) that the inspector will use for subsequent requests.
+
+You should also see a **REQUEST** debug log entry for `initialize_client`; check its `data.jwt` field to ensure your token was actually sent over the socket.
+
+> Note: the Debug Console is cleared each time you click **Connect**, so it will show only this session’s request/auth logs.

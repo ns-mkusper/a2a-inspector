@@ -129,6 +129,7 @@ async def get_agent_card(request: Request) -> JSONResponse:
         request_data = await request.json()
         agent_url = request_data.get('url')
         sid = request_data.get('sid')
+        jwt = request_data.get('jwt')
 
         if not agent_url or not sid:
             return JSONResponse(
@@ -151,7 +152,10 @@ async def get_agent_card(request: Request) -> JSONResponse:
 
     # 3. Perform the main action and prepare response.
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        headers: dict[str, str] = {}
+        if jwt:
+            headers['Authorization'] = f'Bearer {jwt}'
+        async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
             card_resolver = A2ACardResolver(client, agent_url)
             card = await card_resolver.get_agent_card()
 
@@ -208,6 +212,8 @@ async def handle_disconnect(sid: str) -> None:
 @sio.on('initialize_client')
 async def handle_initialize_client(sid: str, data: dict[str, Any]) -> None:
     """Handle the 'initialize_client' socket.io event."""
+    # Emit the raw init payload so users can confirm the JWT was sent
+    await _emit_debug_log(sid, 'initialize_client', 'request', data)
     agent_url = data.get('url')
     if not agent_url:
         await sio.emit(
@@ -217,12 +223,19 @@ async def handle_initialize_client(sid: str, data: dict[str, Any]) -> None:
         )
         return
     try:
-        httpx_client = httpx.AsyncClient(timeout=600.0)
+        jwt = data.get('jwt')
+        headers: dict[str, str] = {}
+        if jwt:
+            headers['Authorization'] = f'Bearer {jwt}'
+        httpx_client = httpx.AsyncClient(timeout=600.0, headers=headers)
         card_resolver = A2ACardResolver(httpx_client, str(agent_url))
         card = await card_resolver.get_agent_card()
         a2a_client = A2AClient(httpx_client, agent_card=card)
         clients[sid] = (httpx_client, a2a_client, card)
+        # First notify the client that initialization succeeded...
         await sio.emit('client_initialized', {'status': 'success'}, to=sid)
+        # ...then emit an 'auth' debug event showing HTTP headers (including JWT if provided)
+        await _emit_debug_log(sid, 'initialize_client', 'auth', {'headers': headers})
     except Exception as e:
         logger.error(
             f'Failed to initialize client for {sid}: {e}', exc_info=True
